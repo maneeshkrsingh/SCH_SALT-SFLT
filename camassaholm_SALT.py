@@ -9,6 +9,8 @@ Dt = Constant(dt)
 
 n = 100
 mesh = PeriodicIntervalMesh(n, 40.0)
+# viscosity term 
+mu = 100
 
 V = FunctionSpace(mesh, "CG", 1)
 W = MixedFunctionSpace((V, V))
@@ -68,7 +70,7 @@ v = uh*dt+Ln*sqrt_dt
 
 #SALT type
 L = ((q*u1 + alphasq*q.dx(0)*u1.dx(0) - q*m1)*dx 
-        +(p*(m1-m0) +(p*v.dx(0)*mh -p.dx(0)*v*mh))*dx)
+        +(p*(m1-m0) +(p*v.dx(0)*mh -p.dx(0)*v*mh)+mu*dt*p.dx(0)*mh.dx(0))*dx)
 
 uprob = NonlinearVariationalProblem(L, w1)
 usolver = NonlinearVariationalSolver(uprob, solver_parameters=  {'mat_type': 'aij', 'ksp_type': 'preonly','pc_type': 'lu'})
@@ -89,8 +91,8 @@ dumpn = 0
 while (t < T - 0.5*dt):
    t += dt
    E = assemble((u0*u0 + alphasq*u0.dx(0)*u0.dx(0))*dx)
-   print("t = ", t, "E = ", E)
-   np.save("SALT_Energy.npy",  E)
+   #print("t = ", t, "E = ", E)
+   #np.save("SALT_Energy.npy",  E)
    usolver.solve()
    w0.assign(w1)
 
