@@ -113,8 +113,7 @@ wsolver.solve()
 Ln = noise_scale*sqrt_dt*(fx1*dW1+fx2*dW2+fx3*dW3+fx4*dW4)
 
 # with mathern kernel
-Ln_matern = noise_scale*sqrt_dt*dU_1
-
+Ln_matern = noise_scale*sqrt_dt*dU_3
 
 # bilinear form
 mh = 0.5*(m1 + m0)+ Ln # modified density with forcing noise 
@@ -144,10 +143,8 @@ while (t < T - 0.5*dt):
   #print("t = ", t, "E = ", E)
   energies.append(E)  # Append energy to the list
   
-
   usolver.solve()
   w0.assign(w1)
-
   dumpn += 1
   if dumpn == ndump:
     dumpn -= ndump
