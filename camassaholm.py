@@ -60,16 +60,18 @@ t = 0.0
 ufile.write(u1, time=t)
 all_us = []
 
+N_t = 495
 # We also initialise a dump counter so we only dump every 10 timesteps. ::
 ndump = 10
 dumpn = 0
 
 # Enter the timeloop. ::
-while (t < T - 0.5*dt):
+#while (t < T - 0.5*dt):
+for i in range(N_t):
    t += dt
     # The energy can be computed and checked. ::
    E = assemble((u0*u0 + alphasq*u0.dx(0)*u0.dx(0))*dx)
-   print("t = ", t, "E = ", E)
+   print('timestep', i, "t = ", t, "E = ", E)
    np.save("Energy.npy",  E)
 
    usolver.solve()
