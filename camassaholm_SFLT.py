@@ -5,11 +5,11 @@ from firedrake.output import VTKFile
 # set the parameters
 alpha = 1.0
 alphasq = Constant(alpha**2)
-dt = 0.01
+dt = 0.1
 Dt = Constant(dt)
 
-n = 1000
-mesh = PeriodicIntervalMesh(n, 4.0)
+n = 100
+mesh = PeriodicIntervalMesh(n, 40.0)
 
 
 
@@ -22,9 +22,6 @@ m0, u0 = w0.subfunctions
 x, = SpatialCoordinate(mesh)
 
 u0.interpolate(0.2*2/(exp(x-403./15.) + exp(-x+403./15.)) + 0.5*2/(exp(x-203./15.)+exp(-x+203./15.)))
-#u0.interpolate(0.5*2/(exp(x-10.0)+exp(-x+10.0)))
-
-
 
 p = TestFunction(V)
 m = TrialFunction(V)
@@ -65,7 +62,7 @@ dW2.assign(np.random.normal(0.0, 1.0))
 dW3.assign(np.random.normal(0.0, 1.0))
 dW4.assign(np.random.normal(0.0, 1.0))
 
-noise_scale = 1.5
+noise_scale = 0.5
        
 mu = 0.000001 # viscosity
 
@@ -128,7 +125,7 @@ usolver = NonlinearVariationalSolver(uprob, solver_parameters=sp)
 m0, u0 = w0.subfunctions
 m1, u1 = w1.subfunctions
 
-T = 10.0
+T = 100.0
 ufile = VTKFile('SFLT_CH_fig/u.pvd')
 t = 0.0
 ufile.write(u1, time=t)
