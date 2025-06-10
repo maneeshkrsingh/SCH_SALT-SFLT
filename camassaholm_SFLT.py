@@ -3,13 +3,17 @@ import numpy as np
 import matplotlib.pyplot as plt
 from firedrake.output import VTKFile
 # set the parameters
+
+
+
 alpha = 1.0
 alphasq = Constant(alpha**2)
 dt = 0.1
 Dt = Constant(dt)
 
-n = 100
-mesh = PeriodicIntervalMesh(n, 40.0)
+n = 100# number of mesh points
+L = 40.0 # length of the domain
+mesh = PeriodicIntervalMesh(n, L) # 
 
 
 
@@ -21,7 +25,7 @@ m0, u0 = w0.subfunctions
 
 x, = SpatialCoordinate(mesh)
 
-u0.interpolate(0.2*2/(exp(x-403./15.) + exp(-x+403./15.)) + 0.5*2/(exp(x-203./15.)+exp(-x+203./15.)))
+u0.interpolate(0.5*2/(exp((x-10.)/(1/6))+exp((-x+10.)/(1/6.)))) # initial condition u_0 = 0.5 sech((x-40)/(40/240))
 
 p = TestFunction(V)
 m = TrialFunction(V)
@@ -57,12 +61,15 @@ dW3 = Function(R)
 dW4 = Function(R)
 
 # noise term
+# fix the seed 
+np.random.seed(42)
+
 dW1.assign(np.random.normal(0.0, 1.0))
 dW2.assign(np.random.normal(0.0, 1.0))
 dW3.assign(np.random.normal(0.0, 1.0))
 dW4.assign(np.random.normal(0.0, 1.0))
 
-noise_scale = 0.5
+noise_scale = 0.0
        
 mu = 0.000001 # viscosity
 
@@ -116,8 +123,15 @@ Ln_matern = noise_scale*sqrt_dt*dU_3
 mh = 0.5*(m1 + m0)+ Ln # modified density with forcing noise 
 uh = 0.5*(u1 + u0)
 
-L = ((q*u1*dt + alphasq*q.dx(0)*u1.dx(0)*dt - q*m1)*dx 
-      +(p*(m1-m0) + Dt*(p*uh.dx(0)*mh -p.dx(0)*uh*mh + mu*p.dx(0)*mh.dx(0)))*dx)
+# L = ((q*u1*dt + alphasq*q.dx(0)*u1.dx(0)*dt - q*m1)*dx 
+#       +(p*(m1-m0) + Dt*(p*uh.dx(0)*mh -p.dx(0)*uh*mh + mu*p.dx(0)*mh.dx(0)))*dx)
+
+
+L = (
+(q*u1 + alphasq*q.dx(0)*u1.dx(0) - q*m1)*dx +
+(p*(m1-m0) + Dt*(p*uh.dx(0)*mh -p.dx(0)*uh*mh))*dx
+)
+
 
 uprob = NonlinearVariationalProblem(L, w1)
 usolver = NonlinearVariationalSolver(uprob, solver_parameters=sp)
@@ -136,7 +150,8 @@ dumpn = 0
 
 while (t < T - 0.5*dt):
   t += dt
-  E = assemble((u0*u0*Dt + Dt*alphasq*u0.dx(0)*u0.dx(0))*dx)
+  #E = assemble((u0*u0*Dt + Dt*u0.dx(0)*u0.dx(0))*dx)
+  E = assemble((u0*u0 + alphasq*u0.dx(0)*u0.dx(0))*dx)
   #print("t = ", t, "E = ", E)
   energies.append(E)  # Append energy to the list
   
@@ -150,4 +165,13 @@ while (t < T - 0.5*dt):
 np.save("SFLT_Energy.npy", np.array(energies))
 fig, axes = plt.subplots()
 plot(all_us[-1], axes=axes)
+plt.show()
+
+
+energy_SFLT = np.load('SFLT_Energy.npy')
+
+plt.plot(energy_SFLT)
+plt.xlabel('Time Steps')
+plt.ylabel('Energy')
+plt.title('Energy vs Time Steps')
 plt.show()
