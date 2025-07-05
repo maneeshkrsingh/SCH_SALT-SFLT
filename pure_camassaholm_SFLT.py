@@ -182,15 +182,15 @@ m1, u1 = w1.subfunctions
 
 
 # Final time
-T = 150.0
+T = 50.0
 
 # VTK files for output
 if noise_scale == 0.0:
   ufile = VTKFile('../CH_output0/gaussian_wide/u_pure.pvd')
   mfile = VTKFile('../CH_output0/gaussian_wide/m_pure.pvd')
 else: 
-  ufile = VTKFile('../CH_output0/gaussian_wide/u_noise.pvd')
-  mfile = VTKFile('../CH_output0/gaussian_wide/m_noise.pvd')
+  ufile = VTKFile('../CH_output0/gaussian_wide/u_noise1.pvd')
+  mfile = VTKFile('../CH_output0/gaussian_wide/m_noise1.pvd')
 
 t = 0.0
 # ufile.write(u1, time=t)

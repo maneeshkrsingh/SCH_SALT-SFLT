@@ -9,7 +9,8 @@ np.random.seed(42)
 
 alpha = 1.0
 alphasq = Constant(alpha**2)
-dt = 0.001
+mu = 0.01 # viscosity term
+dt = 0.0025
 Dt = Constant(dt)
 
 # simulation parameters
@@ -21,7 +22,7 @@ peak_width=1/6
 deltax = Ld / resolutions
 
 # Build the mesh. 
-mesh = PeriodicIntervalMesh(n, 40.0)
+mesh = PeriodicIntervalMesh(n, Ld)
 x, = SpatialCoordinate(mesh)
 
 
@@ -54,6 +55,7 @@ ic_dict = {'two_peaks': (0.2*2/(exp(x-403./15.*40./Ld) + exp(-x+403./15.*40./Ld)
                'two_peakons': conditional(x < Ld/4, exp((x-Ld/4)/sqrt(alphasq)) - exp(-(x+Ld/4)/sqrt(alphasq)),
                                           conditional(x < 3*Ld/4, exp(-(x-Ld/4)/sqrt(alphasq)) - exp((x-3*Ld/4)/sqrt(alphasq)),
                                                       exp((x-5*Ld/4)/sqrt(alphasq)) - exp(-(x-3*Ld/4)/sqrt(alphasq)))),
+                'twin_wide_gaussian': exp(-((x-10.)/3.)**2) + 0.5*exp(-((x-30.)/3.)**2),
                'twin_peakons': conditional(x < Ld/4, exp((x-Ld/4)/sqrt(alphasq)) + 0.5* exp((x-Ld/2)/sqrt(alphasq)),
                                            conditional(x < Ld/2, exp(-(x-Ld/4)/sqrt(alphasq)) + 0.5* exp((x-Ld/2)/sqrt(alphasq)),
                                                        conditional(x < 3*Ld/4, exp(-(x-Ld/4)/sqrt(alphasq)) + 0.5 * exp(-(x-Ld/2)/sqrt(alphasq)),
@@ -68,7 +70,7 @@ ic_dict = {'two_peaks': (0.2*2/(exp(x-403./15.*40./Ld) + exp(-x+403./15.*40./Ld)
 
 
 
-u0.interpolate(ic_dict['proper_peak']) # initial condition 
+u0.interpolate(ic_dict['gaussian_wide']) # initial condition 
 
 
 
@@ -101,12 +103,15 @@ fx2 = Function(V)
 fx3 = Function(V)
 fx4 = Function(V)
 
+#n = 1,3,5,7,
+#sin(2*(n+1)*pi*x/Ld)
+# sigmas=[0.05, 0.1, 0.2, 0.5, 1.0],
 
 
-fx1.interpolate(0.1*sin(pi*x/8.))
-fx2.interpolate(0.1*sin(2.*pi*x/8.))
-fx3.interpolate(0.1*sin(3.*pi*x/8.))
-fx4.interpolate(0.1*sin(4.*pi*x/8.))
+# fx1.interpolate(0.01*sin(pi*x/8.))
+# fx2.interpolate(0.02*sin(3.*pi*x/8.))
+# fx3.interpolate(0.05*sin(5.*pi*x/8.))
+# fx4.interpolate(0.1*sin(7.*pi*x/8.))
 
 # if constant noise is needed, uncomment the following lines
 # fx1.interpolate(0.1)
@@ -116,42 +121,51 @@ fx4.interpolate(0.1*sin(4.*pi*x/8.))
 
 
 
+# --- Noise basis functions (Xi_functions) ---
+Nxi = 5  # Number of noise modes
+sigmas = [0.01, 0.02, 0.05, 0.1, 0.2]  # Amplitudes for each mode (adjust as needed)
+Xi_functions = []
+
+for i in range(Nxi):
+    fx = Function(V)
+    n = 2 * (i + 1) + 10  # frequencies: 12, 14, 16, 18, ...
+    if (i + 1) % 2 == 1:
+        fx.interpolate(sigmas[i] * sin(n * pi * x / Ld))
+    else:
+        fx.interpolate(sigmas[i] * cos(n * pi * x / Ld))
+    Xi_functions.append(fx)
+
+# --- Wiener processes for each mode ---
 R = FunctionSpace(mesh, "R", 0)
-
-
-
 sqrt_dt = dt**0.5
-dW1 = Function(R)
-dW2 = Function(R)
-dW3 = Function(R)
-dW4 = Function(R)
-
-
-dW1.assign(np.random.normal(0.0, 1.0))
-dW2.assign(np.random.normal(0.0, 1.0))
-dW3.assign(np.random.normal(0.0, 1.0))
-dW4.assign(np.random.normal(0.0, 1.0))
+dWs = [Function(R) for _ in range(Nxi)]
+for dW in dWs:
+    dW.assign(np.random.normal(0.0, 1.0))
 
 
 
 #consant noise
-noise_scale = 0.0
-Ln = noise_scale*sqrt_dt*dW1
+# noise_scale = 0.0
+# Ln = noise_scale*sqrt_dt*dW1
 
 
 #SFLT type
-#noise_scale = 10.0
-#Ln = noise_scale*sqrt_dt*(fx1*dW1+fx2*dW2+fx3*dW3+fx4*dW4)
+noise_scale = 0.1
+Ln = noise_scale * sqrt_dt * sum(Xi_functions[i] * dWs[i] for i in range(Nxi))
+
+
+print('noise value', assemble(abs(Ln)*dx)/Ld)
+
 #print('noise value', assemble(Ln*dx))
 ###
 # bilinear form
-mh = 0.5*(m1 + m0)+ Ln # modified density with forcing noise 
+mh = 0.5*Dt*(m1 + m0)+Ln # modified density with forcing noise 
 uh = 0.5*(u1 + u0)
 
 L = (
 (q*u1 + alphasq*q.dx(0)*u1.dx(0) - q*m1)*dx +
-(p*(m1-m0) + Dt*(p*uh.dx(0)*mh -p.dx(0)*uh*mh))*dx
-)
+(p*(m1-m0) + (p*uh.dx(0)*mh -p.dx(0)*uh*mh) )*dx)
+
 
 
 
@@ -168,22 +182,24 @@ m1, u1 = w1.subfunctions
 
 
 # Final time
-T = 50.0
+T = 100.0
 
 # VTK files for output
 if noise_scale == 0.0:
-  ufile = VTKFile('../CH_output0/perCH_fig/u_pure.pvd')
-  mfile = VTKFile('../CH_output0/perCH_fig/m_pure.pvd')
+  ufile = VTKFile('../CH_output0/gaussian_wide/u_pure.pvd')
+  mfile = VTKFile('../CH_output0/gaussian_wide/m_pure.pvd')
 else: 
-  ufile = VTKFile('../CH_output0/perCH_fig_noise/u_noise.pvd')
-  mfile = VTKFile('../CH_output0/perCH_fig_noise/m_noise.pvd')
-
+  ufile = VTKFile('../CH_output0/gaussian_wide/u_noise.pvd')
+  mfile = VTKFile('../CH_output0/gaussian_wide/m_noise.pvd')
 
 t = 0.0
-ufile.write(u1, time=t)
+# ufile.write(u1, time=t)
 all_us = []
 all_ms = []
 
+# --- Add this for energy storage ---
+energy_one = []
+energy_two = []
 
 # We also initialise a dump counter so we only dump
 ndump = 100
@@ -193,38 +209,48 @@ dumpn = 0
 while (t < T - 0.5*dt):
    t += dt
 
-
-
    usolver.solve()
    w0.assign(w1)
-
 
    dumpn += 1
    if dumpn == ndump:
       # The energy can be computed and checked
-      E = assemble((u0*u0 + alphasq*u0.dx(0)*u0.dx(0))*dx)
-      print("t = ", t, "E = ", E)
+      # first conservation
+      # H = assemble(u1*dx)
+      # print("t = ", t, "H = ", H)
+      E_1 = assemble((u1*u1)*dx)
+      E_2 = assemble((alphasq*u1.dx(0)*u1.dx(0))*dx)
+      print("t = ", t, "E_1 = ", E_1, "E_2 = ", E_2, 'TE', E_1 + E_2)
       dumpn -= ndump
       ufile.write(u1, time=t)
       all_us.append(Function(u1))
       mfile.write(m1, time=t)
       all_ms.append(Function(m1))
+      # --- Save energy and time ---
+      energy_one.append(E_1)
+      energy_two.append(E_2)
+      print('mvalue', assemble(dt*abs(m1)*dx)/Ld )
+
+# # After time loop, convert to numpy arrays
+energy_one = np.array(energy_one)
+energy_two = np.array(energy_two)
+# # Save energy arrays to disk
+np.save("gaussian_wide_energy_one.npy", energy_one)
+np.save("gaussian_wide_energy_two.npy", energy_two)
+
+# try:
+#   from firedrake.pyplot import plot
+#   fig, axes = plt.subplots()
+#   plot(all_us[-1], axes=axes)
+# except Exception as e:
+#   warning("Cannot plot figure. Error msg: '%s'" % e)
+
+# # And finally show the figure::
+
+# try:
+#   plt.show()
+# except Exception as e:
+#   warning("Cannot show figure. Error msg: '%s'" % e)
 
 
 
-try:
-  from firedrake.pyplot import plot
-  fig, axes = plt.subplots()
-  plot(all_us[-1], axes=axes)
-except Exception as e:
-  warning("Cannot plot figure. Error msg: '%s'" % e)
-
-# And finally show the figure::
-
-try:
-  plt.show()
-except Exception as e:
-  warning("Cannot show figure. Error msg: '%s'" % e)
-
-
-print('mvalue', np.max(m1.dat.data[:]),np.min(m1.dat.data[:]) )
