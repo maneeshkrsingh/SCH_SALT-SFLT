@@ -19,9 +19,8 @@ split = fd.split
 dx = fd.dx
 dS = fd.dS
 
-
 # model parameters
-alpha = .01
+alpha = .1
 alphasq = fd.Constant(alpha**2)
 dt = 0.00125
 Dt = fd.Constant(dt)
@@ -76,11 +75,13 @@ u0, m0 = um0.subfunctions
 m0.rename("Momentum denisity")
 u0.rename("Velocity")
 
+dS = dS('everywhere', metadata = {'quadrature_degree': 4})
+
 # make method to get bilinear form velocity
 def form_viscosity(u, v,  eta = None):
     mesh = v.ufl_domain()
     if not eta:
-        eta = fd.Constant(1.0)
+        eta = fd.Constant(10.0)
     n = fd.FacetNormal(mesh)
     a = fd.inner(fd.grad(u), fd.grad(v))*fd.dx
     h = fd.avg(fd.CellVolume(mesh))/fd.FacetArea(mesh)
@@ -157,13 +158,13 @@ uh_cross_dm = cross2d(uh, dm)
 
 
 F_um = (
-        inner(dm, m1 - m0) * dx
-        #+ Dt * inner(perp(grad(inner(dm, perp(uh)))), mh) * dx
-        #- Dt *inner(both(perp(n)*inner(dm, perp(uh))), both(Upwind*mh))*dS
-        - Dt * div(dm)*inner(uh, mh) * dx
-        + Dt * div(uh) * inner(dm, mh) * dx
-        + inner(du, uh) * dx - inner(du, mh) * dx
-        + alphasq * form_viscosity(uh, du)
+    inner(dm, m1 - m0) * dx
+    + Dt * inner(perp(grad(inner(dm, perp(uh)))), mh) * dx
+    - Dt *inner(both(perp(n)*inner(dm, perp(uh))), both(Upwind*mh))*dS
+    - Dt * div(dm)*inner(uh, mh) * dx
+    + Dt * div(uh) * inner(dm, mh) * dx
+    + inner(du, u1) * dx - inner(du, m1) * dx
+    + alphasq * form_viscosity(u1, du)
 )
 
 
@@ -181,14 +182,14 @@ F_um = (
 
 # soolver parameters
 lu_parameters = {
-    #'snes_monitor': None,
+    'snes_monitor': None,
     #'ksp_monitor': None,
     'snes_rtol': 1e-8,
     'snes_atol': 0,
     'snes_stol': 0,
-    'ksp_type': 'gmres',
-    'pc_type': 'lu',
-    'pc_factor_mat_solver_type': 'mumps'
+    #'ksp_type': 'gmres',
+    #'pc_type': 'fieldsplit',
+    #'pc_fieldsplit_type': 'multiplicative'
 }
 
 s_parameters={
@@ -203,7 +204,8 @@ s_parameters={
 }
 
 um_prob = fd.NonlinearVariationalProblem(F_um, um1)
-um_solver = fd.NonlinearVariationalSolver(um_prob)
+um_solver = fd.NonlinearVariationalSolver(um_prob,
+                                          solver_parameters=lu_parameters)
 
 t = 0.0
 # Create a VTK file writer for velocity
@@ -222,16 +224,17 @@ t = 0.0
 energy_all = []
 print(f"Starting time loop from t=0 to t={T}")
 while (t < T - 0.5 * dt):
-    energy = 0.5 * fd.assemble(dot(u0, u0)* dx + alphasq * form_viscosity(u0, u0) )
-    energy_all.append(energy)
-
+    
     um_solver.solve()
     um0.assign(um1)
+
+    energy = 0.5 * fd.assemble(dot(u0, u0)* dx + alphasq * form_viscosity(u0, u0) )
+    energy_all.append(energy)
+    print(f"t = {t:.6f}, Energy = {energy:.6f}")
     
     dumpn += 1
     if dumpn == ndump:
         check_courant(u0, Dt, mesh)
-        print(f"t = {t:.6f}, Energy = {energy:.6f}")
         dumpn = 0
         u1_func.rename("Velocity")
         u_proj.assign(fd.project(u1_func, V_CG))
