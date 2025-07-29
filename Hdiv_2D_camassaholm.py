@@ -20,13 +20,13 @@ dx = fd.dx
 dS = fd.dS
 
 # model parameters
-alpha = .1
+alpha = .5
 alphasq = fd.Constant(alpha**2)
-dt = 0.00125
+dt = 0.0000125
 Dt = fd.Constant(dt)
 
 # Mesh and Function Spaces
-n = 64
+n = 128
 Lx = 2* fd.pi
 Ly = 2* fd.pi
 mesh = fd.PeriodicRectangleMesh(n, n, Lx, Ly)
@@ -38,12 +38,12 @@ x, y = fd.SpatialCoordinate(mesh)
 
 width = Lx / 4.0  # Width of the Gaussian
 # Center positions for each component
-x1c, y1c = 3 * Lx / 4, 3 * Ly / 4
+x1c, y1c = 1 * Lx / 2, 1 * Ly / 2
 x2c, y2c = Lx / 4, Ly / 4
 # Gaussian components
 u_expr = fd.as_vector([
-    0.5 * fd.exp(-((x - x1c)**2 + (y - y1c)**2) / (2 * width**2)),
-    0.5 * fd.exp(-((x - x2c)**2 + (y - y2c)**2) / (2 * width**2))
+    0.5 * fd.exp(-((x - x1c)**2/(0.4**2) + (y - y1c)**2/(1**2))),
+    0
 ])
 # u_expr = fd.as_vector([
 #     0.05,
@@ -71,9 +71,9 @@ um0 = fd.Function(W)
 
 
 
-u0, m0 = um0.subfunctions
-m0.rename("Momentum denisity")
-u0.rename("Velocity")
+m0, u0 = um0.subfunctions
+#m0.rename("Momentum denisity")
+#u0.rename("Velocity")
 
 dS = dS('everywhere', metadata = {'quadrature_degree': 4})
 
@@ -136,7 +136,7 @@ def cross2d(a, b):
 def perp(u):
     return fd.as_vector([-u[1], u[0]])
 
-du, dm = fd.TestFunctions(W)
+dm, du = fd.TestFunctions(W)
 
 mh = 0.5 * (m1 + m0)
 uh = 0.5 * (u1 + u0)
@@ -183,13 +183,21 @@ F_um = (
 # soolver parameters
 lu_parameters = {
     'snes_monitor': None,
+    'snes_converged_reason': None,
     #'ksp_monitor': None,
-    'snes_rtol': 1e-8,
-    'snes_atol': 0,
+    'snes_rtol': 1e-5,
+    'snes_atol': 1.0e-5,
     'snes_stol': 0,
-    #'ksp_type': 'gmres',
+    'ksp_type': 'fgmres',
+    'ksp_max_it': 50,
     #'pc_type': 'fieldsplit',
-    #'pc_fieldsplit_type': 'multiplicative'
+    'ksp_error_if_not_converged': None,
+    'pc_fieldsplit_type': 'multiplicative',
+    #'fieldsplit_0_fields': '1',
+    #'fieldsplit_1_fields': '0',
+    'fieldsplit_ksp_type': 'preonly',
+    'fieldsplit_pc_type': 'lu',
+    'fieldsplit_pc_factor_mat_solver_type': 'mumps',
 }
 
 s_parameters={
@@ -211,8 +219,8 @@ t = 0.0
 # Create a VTK file writer for velocity
 V_CG = fd.VectorFunctionSpace(mesh, "CG", 1)
 u_proj = fd.Function(V_CG, name="ProjectedVelocity")
-ufile = VTKFile("../CH_output0/Hdiv_CH/velocity_output.pvd", project_output=True)
-u1_func, _ = um1.subfunctions  
+ufile = VTKFile("CH_output0/Hdiv_CH/velocity_output.pvd", project_output=True)
+_, u1_func = um1.subfunctions  
 u_proj.assign(fd.project(u1_func, V_CG))
 ufile.write(u_proj, time=t)
 
@@ -230,7 +238,7 @@ while (t < T - 0.5 * dt):
 
     energy = 0.5 * fd.assemble(dot(u0, u0)* dx + alphasq * form_viscosity(u0, u0) )
     energy_all.append(energy)
-    print(f"t = {t:.6f}, Energy = {energy:.6f}")
+    print(f"t = {t:.6f}, Energy = {energy:.6f}", dumpn, ndump)
     
     dumpn += 1
     if dumpn == ndump:
@@ -241,4 +249,4 @@ while (t < T - 0.5 * dt):
         ufile.write(u_proj, time=t)
 
     t += dt
-np.save("../CH_output0/Hdiv_CH/energy.npy", energy_all)
+np.save("CH_output0/Hdiv_CH/energy.npy", energy_all)
