@@ -25,24 +25,29 @@ dS = fd.dS
 
 
 
-n = 64
+# --- Physical constants ---
+g = fd.Constant(10)      # gravity
+f = fd.Constant(10)      # Coriolis parameter
+H = fd.Constant(1.0)     # mean fluid depth
+A = 0.1                  # amplitude for perturbations
+
+# --- Domain size ---
 Lx = Ly = 1.0
+
+# --- Mesh and spatial coordinates ---
+n = 128
 mesh = fd.PeriodicRectangleMesh(n, n, Lx, Ly)
 x, y = fd.SpatialCoordinate(mesh)
+
+
 # Time stepping
 dt = 0.00025
 Dt = Constant(dt)
 
 
 
-g = Constant(10)
-f = Constant(10)
-H = Constant(1)
 
-
-
-
-degree = 1 
+degree = 1
 V1 = fd.FunctionSpace(mesh, "BDM", degree+1)   # Velocity (H(div))
 V2 = fd.FunctionSpace(mesh, "DG", degree)    # Depth (L2)
 V0 = fd.FunctionSpace(mesh, "CG", degree+2) # pv
@@ -62,40 +67,61 @@ def check_courant(u, dt, mesh):
 
 
 
+# ------------------------------
+# Initial Condition Options
+# ------------------------------
+def init_vortex():
+    """Gaussian vortex + optional zonal jet"""
+    x0, y0 = 0.5, 0.5
+    R = 0.1
+    r2 = (x - x0)**2 + (y - y0)**2
+    D_expr = H + A * fd.exp(-r2 / R**2)
+    gradD = fd.grad(D_expr)
+    u_expr = (g / f) * fd.as_vector([gradD[1], -gradD[0]])
 
+    # Optional: zonal jet
+    jet_strength = 0.5
+    u_expr += fd.as_vector([jet_strength * fd.sin(2 * fd.pi * y), 0])
 
-# # #intial condtions differeent
-# # Vortex parameters
-# x0, y0 = 0.5, 0.5     # Center of vortex
-# R = 0.1               # Vortex radius
-# A = 0.1               # Amplitude of height perturbation
+    D0.interpolate(D_expr)
+    u0.interpolate(u_expr)
 
-# # Spatial coordinates
-# x, y = fd.SpatialCoordinate(mesh)
+def init_cosine():
+    """Cosine perturbation with geostrophic balance"""
+    kx = 2 * fd.pi / Lx
+    ky = 2 * fd.pi / Ly
+    eta = A * fd.cos(kx * x) * fd.cos(ky * y)
+    h_expr = H + eta
 
-# # Depth field: Gaussian bump
-# r2 = (x - x0)**2 + (y - y0)**2
-# D_expr = H + A * fd.exp(-r2 / R**2)
+    u_x = -g/f * (-ky * A * fd.sin(kx * x) * fd.sin(ky * y))  # -∂η/∂y
+    u_y =  g/f * (-kx * A * fd.sin(kx * x) * fd.sin(ky * y))  # ∂η/∂x
+    u_expr = fd.as_vector((u_x, u_y))
 
-# # Compute gradient of depth
-# gradD = fd.grad(D_expr)
+    D0.project(h_expr)
+    u0.project(u_expr)
 
-# # Geostrophically balanced velocity: u = (g/f) * perp(grad D)
-# u_expr = (g/f) * fd.as_vector([gradD[1], -gradD[0]])
+def init_rest_plus_perturbation():
+    """Small cosine perturbation, fluid initially at rest"""
+    kx = 2 * fd.pi / Lx
+    ky = 2 * fd.pi / Ly
+    h_expr = H + A * fd.cos(kx * x) * fd.cos(ky * y)
+    u_expr = fd.as_vector((0.0, 0.0))
 
-# # Optional: Add a weak zonal jet perturbation for richer structure
-# jet_strength = 0.5
-# u_expr += fd.as_vector([jet_strength * fd.sin(2 * np.pi * y), 0])
+    D0.project(h_expr)
+    u0.project(u_expr)
 
-# # Interpolate into initial condition fields
-# D0.interpolate(D_expr)
-# u0.interpolate(u_expr)
+# Dictionary of ICs
+initial_conditions = {
+    "vortex": init_vortex,
+    "cosine": init_cosine,
+    "rest_plus_perturbation": init_rest_plus_perturbation,
+}
 
+# Choose initial condition here
+chosen_ic = "cosine"  # Options: "vortex", "cosine", "rest_plus_perturbation"
+initial_conditions[chosen_ic]()  # Apply it
+print(f"Applied initial condition: {chosen_ic}")
 
-u_expr = fd.as_vector([0, fd.sin(2*fd.pi*x)])
-u0.interpolate(u_expr)
-D_expr = 1 + (1/4*fd.pi)*fd.sin(4*fd.pi*y)
-D0.interpolate(D_expr)
 
 
 def both(u):
@@ -133,17 +159,17 @@ uD1.assign(uD0)
 u1, D1 = split(uD1)
 u0, D0 = split(uD0)
 
-
-
-def perp(u):
-    return fd.as_vector([-u[1], u[0]])
-
+# implicit rule
+# uh = u1 
+# Dh = D1
 
 
 
-# mid point rule
+# implicit midpoint rule
 uh = 0.5 * (u1 + u0)
 Dh = 0.5 * (D1 + D0)
+
+
 
 du, dD = fd.TestFunctions(V)
 
@@ -167,25 +193,19 @@ nuD_problem = fd.NonlinearVariationalProblem(testeqn, uD1)
 # uD_problem = fd.NonlinearVariationalProblem(F_uD, uD1)
 
 
-# soolver parameters
+# solver parameters
 lu_parameters = {
     'snes_monitor': None,
     'snes_converged_reason': None,
-    #'ksp_monitor': None,
     'snes_rtol': 1e-5,
-    'snes_atol': 1.0e-5,
-    'snes_stol': 0,
-    'ksp_type': 'fgmres',
-    'ksp_max_it': 50,
-    #'pc_type': 'fieldsplit',
-    'ksp_error_if_not_converged': None,
-    'pc_fieldsplit_type': 'multiplicative',
-    #'fieldsplit_0_fields': '1',
-    #'fieldsplit_1_fields': '0',
-    'fieldsplit_ksp_type': 'preonly',
-    'fieldsplit_pc_type': 'lu',
-    'fieldsplit_pc_factor_mat_solver_type': 'mumps',
+    'ksp_type': 'preonly',
+    'pc_type': 'lu',
+    'pc_factor_mat_solver_type': 'mumps',
 }
+
+
+
+
 uD_solver = fd.NonlinearVariationalSolver(nuD_problem, solver_parameters=lu_parameters)
 
 
@@ -210,7 +230,7 @@ qsolver = fd.LinearVariationalSolver(vprob,
 
 # Create a VTK file writer for velocity
 outfile = VTKFile("Output0/NLRSW/Veldepthvort.pvd", project_output=True)
-Vv_CG = fd.VectorFunctionSpace(mesh, "CG", 1)
+Vv_CG = fd.VectorFunctionSpace(mesh, "CG", 2)
 Vs_CG = fd.FunctionSpace(mesh, "CG", 1)
 u_proj = fd.Function(Vv_CG, name="ProjectedVelocity")
 D_proj = fd.Function(Vs_CG, name="ProjectedDepth")
@@ -223,7 +243,7 @@ outfile.write(u_proj, D_proj, qn, time=0)
 # --------------------------
 T = 1.0
 t = 0.0
-ndump = 2
+ndump = 10
 dumpn = 0
 energy_all = []
 
