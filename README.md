@@ -1,1 +1,1 @@
-A numerical experimentation of stochatsic version using Stohcstic advection using Lie Trasport (SALT) and  Stohcstic forcing  using Lie Trasport(SFLT) for different GFD models
+A numerical experimentation of stochastic version using Stochastic advection using Lie Transport (SALT) and Stochastic forcing using Lie Transport(SFLT) for different GFD models
